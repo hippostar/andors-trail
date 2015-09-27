@@ -37,6 +37,7 @@ public final class AndorsTrailPreferences {
 	public static final int QUICKSLOTS_POSITION_VERTICAL_BOTTOM_RIGHT = 6;
 	public static final int ATTACKSPEED_DEFAULT_MILLISECONDS = 1000;
 
+	public boolean noAutoConversation = true;
 	public boolean confirmRest = true;
 	public boolean confirmAttack = true;
 	public int displayLoot = DISPLAYLOOT_DIALOG_ALWAYS;
@@ -73,6 +74,7 @@ public final class AndorsTrailPreferences {
 			dest.quickslotsPosition = Integer.parseInt(prefs.getString("quickslots_placement", Integer.toString(QUICKSLOTS_POSITION_HORIZONTAL_CENTER_BOTTOM)));
 			dest.showQuickslotsWhenToolboxIsVisible = prefs.getBoolean("showQuickslotsWhenToolboxIsVisible", false);
 			dest.useLocalizedResources = prefs.getBoolean("useLocalizedResources", true);
+			dest.noAutoConversation = prefs.getBoolean("noAutoConversation", true);
 
 			// This might be implemented as a skill in the future.
 			//dest.movementAggressiveness = Integer.parseInt(prefs.getString("movementaggressiveness", Integer.toString(MOVEMENTAGGRESSIVENESS_NORMAL)));
@@ -93,6 +95,7 @@ public final class AndorsTrailPreferences {
 			dest.quickslotsPosition = QUICKSLOTS_POSITION_HORIZONTAL_CENTER_BOTTOM;
 			dest.showQuickslotsWhenToolboxIsVisible = false;
 			dest.useLocalizedResources = true;
+			dest.noAutoConversation = true;
 		}
 	}
 }
