@@ -39,7 +39,7 @@ public final class MapController {
 
             switch (mapObject.evaluateWhen) {
                 case afterEveryRound:
-                    return;
+				continue;
                 case whenEntering:
                     // Do not trigger event if the player already was on the same MapObject before.
                     if (mapObject.position.contains(lastPosition)) return;
@@ -196,16 +196,31 @@ public final class MapController {
             for (ReplaceableMapSection replacement : tileMap.replacements) {
                 if (replacement.isApplied) continue;
                 if (!satisfiesCondition(replacement)) continue;
+				else ConversationController.requirementFulfilled(world, replacement.requirement);
                 tileMap.applyReplacement(replacement);
+				for (ReplaceableMapSection impactedReplacement : tileMap.replacements) {
+					if (impactedReplacement.isApplied && impactedReplacement.replacementArea.intersects(replacement.replacementArea)) {
+						//The applied replacement has overwritten changes made by a previously applied replacement.
+						//This previous replacement must now be considered as unapplied to let it be reapplied later eventually.
+						impactedReplacement.isApplied = false;
+					}
+				}
                 hasUpdated = true;
             }
         }
+		if (map.currentColorFilter != null) {
+			LayeredTileMap.ColorFilterId filter = LayeredTileMap.ColorFilterId.valueOf(map.currentColorFilter);
+			if (filter != tileMap.colorFilter) {
+				tileMap.changeColorFilter(filter);
+				hasUpdated = true;
+			}
+		}
         map.lastSeenLayoutHash = tileMap.getCurrentLayoutHash();
         return hasUpdated;
     }
 
     public boolean satisfiesCondition(ReplaceableMapSection replacement) {
-        return world.model.player.hasExactQuestProgress(replacement.requireQuestStage);
+		return ConversationController.canFulfillRequirement(world, replacement.requirement);
     }
 
     private final ConversationController.ConversationStatemachine.ConversationStateListener conversationStateListener = new ConversationController.ConversationStatemachine.ConversationStateListener() {
@@ -247,13 +262,11 @@ public final class MapController {
         mapScriptExecutor = new ConversationController.ConversationStatemachine(world, controllers, conversationStateListener);
     }
 
-    public void activateMapObject(PredefinedMap map, MapObject o) {
-        if (o.isActive) return;
-        o.isActive = true;
-        if (o.type == MapObject.MapObjectType.container) map.createContainerLoot(o);
+	public void activateMapObjectGroup(PredefinedMap map, String group) {
+		map.activateMapObjectGroup(group);
     }
 
-    public void deactivateMapObject(MapObject o) {
-        o.isActive = false;
+	public void deactivateMapObjectGroup(PredefinedMap map, String group) {
+		map.deactivateMapObjectGroup(group);
     }
 }

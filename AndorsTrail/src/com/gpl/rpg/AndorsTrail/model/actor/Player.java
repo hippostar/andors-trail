@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map.Entry;
 
-import android.util.FloatMath;
 import android.util.SparseIntArray;
 
 import com.gpl.rpg.AndorsTrail.AndorsTrailApplication;
@@ -172,10 +171,8 @@ public final class Player extends Actor {
 		return v;
 	}
 	private static final int EXP_base = 55;
-	private static final int EXP_D = 400;
-	private static final int EXP_powbase = 2;
 	private static int getRequiredExperienceForNextLevel(int currentLevel) {
-		return (int) (EXP_base * Math.pow(currentLevel, EXP_powbase + currentLevel/EXP_D));
+		return (int) (EXP_base * currentLevel * currentLevel);
 	}
 
 	public boolean canLevelup() {
@@ -254,7 +251,7 @@ public final class Player extends Actor {
 		case attackCost: return baseTraits.attackCost;
 		case attackChance: return baseTraits.attackChance;
 		case criticalSkill: return baseTraits.criticalSkill;
-		case criticalMultiplier: return (int) FloatMath.floor(baseTraits.criticalMultiplier);
+		case criticalMultiplier: return (int) Math.floor(baseTraits.criticalMultiplier);
 		case damagePotentialMin: return baseTraits.damagePotential.current;
 		case damagePotentialMax: return baseTraits.damagePotential.max;
 		case blockChance: return baseTraits.blockChance;
@@ -308,6 +305,13 @@ public final class Player extends Actor {
 			final int numConditions = src.readInt();
 			for(int i = 0; i < numConditions; ++i) {
 				this.conditions.add(new ActorCondition(src, world, fileversion));
+			}
+		}
+
+		if (fileversion >= 43) {
+			final int numConditions = src.readInt();
+			for(int i = 0; i < numConditions; ++i) {
+				this.immunities.add(new ActorCondition(src, world, fileversion));
 			}
 		}
 
@@ -381,6 +385,10 @@ public final class Player extends Actor {
 		position.writeToParcel(dest);
 		dest.writeInt(conditions.size());
 		for (ActorCondition c : conditions) {
+			c.writeToParcel(dest);
+		}
+		dest.writeInt(immunities.size());
+		for (ActorCondition c : immunities) {
 			c.writeToParcel(dest);
 		}
 		lastPosition.writeToParcel(dest);

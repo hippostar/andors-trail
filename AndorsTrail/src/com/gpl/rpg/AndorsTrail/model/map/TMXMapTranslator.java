@@ -1,6 +1,7 @@
 package com.gpl.rpg.AndorsTrail.model.map;
 
 import android.content.res.Resources;
+
 import com.gpl.rpg.AndorsTrail.AndorsTrailApplication;
 import com.gpl.rpg.AndorsTrail.model.actor.MonsterType;
 import com.gpl.rpg.AndorsTrail.model.actor.MonsterTypeCollection;
@@ -47,14 +48,25 @@ public final class TMXMapTranslator {
 			}
 
 			final Size mapSize = new Size(m.width, m.height);
-			ArrayList<MapObject> mapObjects = new ArrayList<MapObject>();
-			ArrayList<MonsterSpawnArea> spawnAreas = new ArrayList<MonsterSpawnArea>();
+			List<MapObject> mapObjects = new LinkedList<MapObject>();
+			List<MonsterSpawnArea> spawnAreas = new LinkedList<MonsterSpawnArea>();
+			List<String> activeGroups = new LinkedList<String>();
 
 			for (TMXObjectGroup group : m.objectGroups) {
+				boolean active = true;
+				for (TMXProperty p : group.properties) {
+					if (p.name.equalsIgnoreCase("active")) {
+						active = Boolean.parseBoolean(p.value);
+					} else if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA) {
+						L.log("OPTIMIZE: Map " + m.name + ", group " + group.name + " has unrecognized property \"" + p.name + "\".");
+					}
+				}
+				if (active) {
+					activeGroups.add(group.name);
+				}
 				for (TMXObject object : group.objects) {
 					final CoordRect position = getTMXObjectPosition(object, m);
 					final Coord topLeft = position.topLeft;
-					boolean isActiveForNewGame = true;
 
 					if (object.type == null) {
 						if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA)
@@ -64,7 +76,7 @@ public final class TMXMapTranslator {
 						for (TMXProperty p : object.properties) {
 							if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA) L.log("OPTIMIZE: Map " + m.name + ", sign " + object.name + "@" + topLeft.toString() + " has unrecognized property \"" + p.name + "\".");
 						}
-						mapObjects.add(MapObject.createMapSignEvent(position, phraseID, group.name, isActiveForNewGame));
+						mapObjects.add(MapObject.createMapSignEvent(position, phraseID, group.name));
 					} else if (object.type.equalsIgnoreCase("mapchange")) {
 						String map = null;
 						String place = null;
@@ -73,17 +85,16 @@ public final class TMXMapTranslator {
 								map = p.value;
 							} else if (p.name.equalsIgnoreCase("place")) {
 								place = p.value;
-							} else if (p.name.equalsIgnoreCase("active")) {
-								isActiveForNewGame = Boolean.parseBoolean(p.value);
 							} else if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA) {
 								L.log("OPTIMIZE: Map " + m.name + ", mapchange " + object.name + "@" + topLeft.toString() + " has unrecognized property \"" + p.name + "\".");
 							}
 						}
-						mapObjects.add(MapObject.createMapChangeArea(position, object.name, map, place, group.name, isActiveForNewGame));
+						mapObjects.add(MapObject.createMapChangeArea(position, object.name, map, place, group.name));
 					} else if (object.type.equalsIgnoreCase("spawn")) {
-						ArrayList<MonsterType> types = monsterTypes.getMonsterTypesFromSpawnGroup(object.name);
+						boolean isActiveForNewGame = true;
 						int maxQuantity = 1;
 						int spawnChance = 10;
+						String spawnGroup = object.name;
 						for (TMXProperty p : object.properties) {
 							if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA) {
 								if (p.value.equals("")) {
@@ -97,11 +108,14 @@ public final class TMXMapTranslator {
 								spawnChance = Integer.parseInt(p.value);
 							} else if (p.name.equalsIgnoreCase("active")) {
 								isActiveForNewGame = Boolean.parseBoolean(p.value);
+							} else if (p.name.equalsIgnoreCase("spawngroup")) {
+								spawnGroup = p.value;
 							} else if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA) {
 								L.log("OPTIMIZE: Map " + m.name + ", spawn " + object.name + "@" + topLeft.toString() + " has unrecognized property \"" + p.name + "\".");
 							}
 						}
 
+						ArrayList<MonsterType> types = monsterTypes.getMonsterTypesFromSpawnGroup(spawnGroup);
 						if (types.isEmpty()) {
 							if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA) {
 								L.log("OPTIMIZE: Map " + m.name + " contains spawn \"" + object.name + "\"@" + topLeft.toString() + " that does not correspond to any monsters. The spawn will be removed.");
@@ -126,33 +140,24 @@ public final class TMXMapTranslator {
 						);
 						spawnAreas.add(area);
 					} else if (object.type.equalsIgnoreCase("key")) {
-						Requirement.RequirementType requireType = Requirement.RequirementType.questProgress;
-						String requireId = null;
-						int requireValue = 0;
 						String phraseID = "";
-						boolean requireNegation = false;
 						for (TMXProperty p : object.properties) {
 							if (p.name.equalsIgnoreCase("phrase")) {
 								phraseID = p.value;
-							} else if (p.name.equalsIgnoreCase("requireType")) {
-								requireType = Requirement.RequirementType.valueOf(p.value);
-							} else if (p.name.equalsIgnoreCase("requireId")) {
-								requireId = p.value;
-							} else if (p.name.equalsIgnoreCase("requireValue")) {
-								requireValue = Integer.parseInt(p.value);
-							} else if (p.name.equalsIgnoreCase("requireNegation")) {
-								requireNegation = Boolean.parseBoolean(p.value);
 							} else if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA) {
-								L.log("OPTIMIZE: Map " + m.name + ", key " + object.name + "@" + topLeft.toString() + " has unrecognized property \"" + p.name + "\".");
+								if (!requirementPropertiesNames.contains(p.name.toLowerCase())) {
+									L.log("OPTIMIZE: Map " + m.name + ", key " + object.name + "@" + topLeft.toString() + " has unrecognized property \"" + p.name + "\".");
+								}
 							}
 						}
-						mapObjects.add(MapObject.createKeyArea(position, phraseID, new Requirement(requireType, requireId, requireValue, requireNegation), group.name, isActiveForNewGame));
+						Requirement req = parseRequirement(object);
+						mapObjects.add(MapObject.createKeyArea(position, phraseID, req, group.name));
 					} else if (object.type.equals("rest")) {
-						mapObjects.add(MapObject.createRestArea(position, object.name, group.name, isActiveForNewGame));
+						mapObjects.add(MapObject.createRestArea(position, object.name, group.name));
 					} else if (object.type.equals("container")) {
 						DropList dropList = dropLists.getDropList(object.name);
 						if (dropList == null) continue;
-						mapObjects.add(MapObject.createContainerArea(position, dropList, group.name, isActiveForNewGame));
+						mapObjects.add(MapObject.createContainerArea(position, dropList, group.name));
 					} else if (object.type.equals("replace")) {
 						// Do nothing. Will be handled when reading map layers instead.
 					} else if (object.type.equalsIgnoreCase("script")) {
@@ -175,7 +180,7 @@ public final class TMXMapTranslator {
 								L.log("OPTIMIZE: Map " + m.name + ", script " + object.name + "@" + topLeft.toString() + " has unrecognized property \"" + p.name + "\".");
 							}
 						}
-						mapObjects.add(MapObject.createScriptArea(position, phraseID, evaluateWhen, group.name, isActiveForNewGame));
+						mapObjects.add(MapObject.createScriptArea(position, phraseID, evaluateWhen, group.name));
 					} else if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA) {
 						L.log("OPTIMIZE: Map " + m.name + ", has unrecognized object type \"" + object.type + "\" for name \"" + object.name + "\".");
 					}
@@ -186,10 +191,39 @@ public final class TMXMapTranslator {
 			MonsterSpawnArea[] _spawnAreas = new MonsterSpawnArea[spawnAreas.size()];
 			_spawnAreas = spawnAreas.toArray(_spawnAreas);
 
-			result.add(new PredefinedMap(m.xmlResourceId, m.name, mapSize, _eventObjects, _spawnAreas, isOutdoors));
+			result.add(new PredefinedMap(m.xmlResourceId, m.name, mapSize, _eventObjects, _spawnAreas, activeGroups, isOutdoors));
 		}
 
 		return result;
+	}
+	
+	private static final List<String> requirementPropertiesNames = Arrays.asList(new String[]{"requireType".toLowerCase(), "requireId".toLowerCase(), "requireValue".toLowerCase(), "requireNegation".toLowerCase()});
+	
+	private static Requirement parseRequirement(TMXObject object) {
+		Requirement.RequirementType requireType = Requirement.RequirementType.questProgress;
+		String requireId = null;
+		int requireValue = 0;
+		boolean requireNegation = false;
+		for (TMXProperty p : object.properties) {
+			if (p.name.equalsIgnoreCase("requireType")) {
+				try {
+					requireType = Requirement.RequirementType.valueOf(p.value);
+				} catch (IllegalArgumentException e) {
+					requireType = null;
+					if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA) {
+						L.log("OPTIMIZE: Unrecognized requirement type: "+p.value);
+					}
+				}
+			} else if (p.name.equalsIgnoreCase("requireId")) {
+				requireId = p.value;
+			} else if (p.name.equalsIgnoreCase("requireValue")) {
+				requireValue = Integer.parseInt(p.value);
+			} else if (p.name.equalsIgnoreCase("requireNegation")) {
+				requireNegation = Boolean.parseBoolean(p.value);
+			}
+		}
+		if (requireType == null) return null;
+		return new Requirement(requireType, requireId, requireValue, requireNegation);
 	}
 
 	private static CoordRect getTMXObjectPosition(TMXObject object, TMXMap m) {
@@ -206,13 +240,19 @@ public final class TMXMapTranslator {
 	private static final String LAYERNAME_OBJECTS = "objects";
 	private static final String LAYERNAME_ABOVE = "above";
 	private static final String LAYERNAME_WALKABLE = "walkable";
+	private static final String PROPNAME_FILTER = "colorfilter";
 	private static final SetOfLayerNames defaultLayerNames = new SetOfLayerNames(LAYERNAME_GROUND, LAYERNAME_OBJECTS, LAYERNAME_ABOVE, LAYERNAME_WALKABLE);
 
 	private static LayeredTileMap transformMap(TMXLayerMap map, TileCache tileCache) {
 		final Size mapSize = new Size(map.width, map.height);
-		String colorFilter = null;
+		LayeredTileMap.ColorFilterId colorFilter = LayeredTileMap.ColorFilterId.none;
 		for (TMXProperty prop : map.properties) {
-			if (prop.name.equalsIgnoreCase("colorfilter")) colorFilter = prop.value;
+			if (prop.name.equalsIgnoreCase(PROPNAME_FILTER)) {
+				String filterId = prop.value;
+				if (filterId != null) {
+					colorFilter = LayeredTileMap.ColorFilterId.valueOf(filterId);
+				}
+			}
 		}
 		HashSet<Integer> usedTileIDs = new HashSet<Integer>();
 		HashMap<String, TMXLayer> layersPerLayerName = new HashMap<String, TMXLayer>();
@@ -248,18 +288,23 @@ public final class TMXMapTranslator {
 						else if (prop.name.equalsIgnoreCase(LAYERNAME_ABOVE)) layerNames.aboveLayersName = prop.value;
 						else if (prop.name.equalsIgnoreCase(LAYERNAME_WALKABLE)) layerNames.walkableLayersName = prop.value;
 						else if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA) {
-							L.log("OPTIMIZE: Map " + map.name + " contains replace area with unknown property \"" + prop.name + "\".");
+							if (!requirementPropertiesNames.contains(prop.name))
+								L.log("OPTIMIZE: Map " + map.name + " contains replace area with unknown property \"" + prop.name + "\".");
 						}
 					}
 					MapSection replacementSection = transformMapSection(map, tileCache, position, layersPerLayerName, usedTileIDs, layerNames);
-					QuestProgress requireQuestStage = QuestProgress.parseQuestProgress(obj.name);
-					if (requireQuestStage == null) {
+					Requirement req = parseRequirement(obj);
+					if (req == null || !req.isValid()) {
+						QuestProgress qp = QuestProgress.parseQuestProgress(obj.name);
+						if (qp != null) req = new Requirement(qp);
+					}
+					if (req == null || !req.isValid()) {
 						if (AndorsTrailApplication.DEVELOPMENT_VALIDATEDATA) {
-							L.log("WARNING: Map " + map.name + " contains replace area that cannot be parsed as a quest stage.");
+							L.log("WARNING: Map " + map.name + " contains replace area "+obj.name+" with unparsable requirement");
 						}
 						continue;
 					}
-					replaceableSections.add(new ReplaceableMapSection(position, replacementSection, requireQuestStage, objectGroup.name));
+					replaceableSections.add(new ReplaceableMapSection(position, replacementSection, req, objectGroup.name));
 				}
 			}
 		}
@@ -362,7 +407,7 @@ public final class TMXMapTranslator {
 		if (srcLayer.layoutHash == null) return;
 		digest.update(srcLayer.layoutHash);
 	}
-
+	
 	private static boolean getTile(final TMXLayerMap map, final int gid, final Tile dest) {
 		for(int i = map.tileSets.length - 1; i >= 0; --i) {
 			TMXTileSet ts = map.tileSets[i];

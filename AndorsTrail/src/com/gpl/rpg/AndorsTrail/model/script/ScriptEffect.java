@@ -6,15 +6,17 @@ public final class ScriptEffect {
 		, dropList
 		, skillIncrease
 		, actorCondition
+		, actorConditionImmunity
 		, alignmentChange
 		, giveItem
 		, createTimer
 		, spawnAll
 		, removeSpawnArea
 		, deactivateSpawnArea
-		, activateMapChangeArea
-		, deactivateMapChangeArea
+		, activateMapObjectGroup
+		, deactivateMapObjectGroup
 		, removeQuestProgress
+		, changeMapFilter
 	}
 
 	public final ScriptEffectType type;

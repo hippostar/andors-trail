@@ -1,8 +1,8 @@
 package com.gpl.rpg.AndorsTrail.controller;
 
-import android.util.FloatMath;
 import com.gpl.rpg.AndorsTrail.context.ControllerContext;
 import com.gpl.rpg.AndorsTrail.context.WorldContext;
+import com.gpl.rpg.AndorsTrail.controller.listeners.CombatActionListeners;
 import com.gpl.rpg.AndorsTrail.model.ability.ActorConditionEffect;
 import com.gpl.rpg.AndorsTrail.model.ability.ActorConditionType;
 import com.gpl.rpg.AndorsTrail.model.ability.SkillCollection;
@@ -21,6 +21,8 @@ import com.gpl.rpg.AndorsTrail.util.ConstRange;
 public final class SkillController {
 	private final ControllerContext controllers;
 	private final WorldContext world;
+	public final CombatActionListeners combatActionListeners = new CombatActionListeners();
+	
 
 	public SkillController(ControllerContext controllers, WorldContext world) {
 		this.controllers = controllers;
@@ -185,6 +187,7 @@ public final class SkillController {
 	public void applySkillEffectsFromMonsterAttack(AttackResult result, Monster monster) {
 		if (!result.isHit) {
 			if (rollForSkillChance(world.model.player, SkillID.taunt, SkillCollection.PER_SKILLPOINT_INCREASE_TAUNT_CHANCE)) {
+				combatActionListeners.onPlayerTauntsMonster(monster);
 				controllers.actorStatsController.changeActorAP(monster, -SkillCollection.TAUNT_AP_LOSS, false, false);
 			}
 		}
@@ -331,7 +334,8 @@ public final class SkillController {
 					playerTraits.criticalMultiplier = Math.max(mainHandItem.effects_equip.stats.setCriticalMultiplier, getPercentage(offHandItem.effects_equip.stats.setCriticalMultiplier, SkillCollection.DUALWIELD_EFFICIENCY_LEVEL2, 0));
 				} else if (skillLevelFightStyle == 1) {
 					percent = SkillCollection.DUALWIELD_EFFICIENCY_LEVEL1;
-					playerTraits.attackCost = attackCostMainHand + getPercentage(attackCostOffHand, SkillCollection.DUALWIELD_LEVEL1_OFFHAND_AP_COST_PERCENT, 0);
+					//Take into account the case where the worst weapon AP-wise is in the off-hand.
+					playerTraits.attackCost = Math.max(attackCostMainHand, attackCostOffHand) + getPercentage( Math.min(attackCostMainHand, attackCostOffHand), SkillCollection.DUALWIELD_LEVEL1_OFFHAND_AP_COST_PERCENT, 0);
 					playerTraits.criticalMultiplier = Math.max(mainHandItem.effects_equip.stats.setCriticalMultiplier, getPercentage(offHandItem.effects_equip.stats.setCriticalMultiplier, SkillCollection.DUALWIELD_EFFICIENCY_LEVEL1, 0));
 				} else {
 					percent = SkillCollection.DUALWIELD_EFFICIENCY_LEVEL0;
@@ -421,9 +425,9 @@ public final class SkillController {
 		if (originalValue == 0) {
 			return 0;
 		} else if (originalValue > 0) {
-			return (int) FloatMath.floor(originalValue * percentForPositiveValues / 100.0f);
+			return (int) Math.floor(originalValue * percentForPositiveValues / 100.0f);
 		} else {
-			return (int) FloatMath.floor(originalValue * percentForNegativeValues / 100.0f);
+			return (int) Math.floor(originalValue * percentForNegativeValues / 100.0f);
 		}
 	}
 	

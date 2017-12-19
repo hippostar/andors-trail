@@ -175,23 +175,36 @@ public final class ItemController {
 	}
 
 	public static void recalculateHitEffectsFromWornItems(Player player) {
-		ArrayList<ItemTraits_OnUse> effects = null;
+		ArrayList<ItemTraits_OnUse> effects_onHit = null;
+		ArrayList<ItemTraits_OnHitReceived> effects_onHitReceived = null;
 		for (Inventory.WearSlot slot : Inventory.WearSlot.values()) {
 			ItemType type = player.inventory.getItemTypeInWearSlot(slot);
 			if (type == null) continue;
-			ItemTraits_OnUse e = type.effects_hit;
-			if (e == null) continue;
+			ItemTraits_OnUse eh = type.effects_hit;
+			ItemTraits_OnHitReceived ehr = type.effects_hitReceived;
+			if (eh == null && ehr == null) continue;
 
-			if (effects == null) effects = new ArrayList<ItemTraits_OnUse>();
-			effects.add(e);
+			if (effects_onHit == null) effects_onHit = new ArrayList<ItemTraits_OnUse>();
+			if (eh != null) effects_onHit.add(eh);
+			
+			if (effects_onHitReceived == null) effects_onHitReceived = new ArrayList<ItemTraits_OnHitReceived>();
+			if (ehr != null) effects_onHitReceived.add(ehr);
 		}
 
-		if (effects != null) {
-			ItemTraits_OnUse[] effects_ = new ItemTraits_OnUse[effects.size()];
-			effects_ = effects.toArray(effects_);
+		if (effects_onHit != null) {
+			ItemTraits_OnUse[] effects_ = new ItemTraits_OnUse[effects_onHit.size()];
+			effects_ = effects_onHit.toArray(effects_);
 			player.onHitEffects = effects_;
 		} else {
 			player.onHitEffects = null;
+		}
+
+		if (effects_onHitReceived != null) {
+			ItemTraits_OnHitReceived[] effects_ = new ItemTraits_OnHitReceived[effects_onHitReceived.size()];
+			effects_ = effects_onHitReceived.toArray(effects_);
+			player.onHitReceivedEffects = effects_;
+		} else {
+			player.onHitReceivedEffects = null;
 		}
 	}
 
@@ -210,6 +223,7 @@ public final class ItemController {
 	public void pickupAll(Loot loot) {
 		world.model.player.inventory.add(loot.items);
 		consumeNonItemLoot(loot);
+		checkQuickslotItemLooted(loot.items);
 		loot.clear();
 	}
 	public void pickupAll(Iterable<Loot> lootBags) {
@@ -352,4 +366,18 @@ public final class ItemController {
 		world.model.player.inventory.quickitem[quickSlotId] = itemType;
 		quickSlotListeners.onQuickSlotChanged(quickSlotId);
 	}
+	
+	private void checkQuickslotItemLooted(ItemContainer items) {
+		for (ItemEntry item : items.items) {
+			if (item.itemType.isUsable()) {
+				for (int i = 0; i < world.model.player.inventory.quickitem.length; i++) {
+					if (item.itemType == world.model.player.inventory.quickitem[i]) {
+						quickSlotListeners.onQuickSlotChanged(i);
+						
+					}
+				}
+			}
+		}
+	}
+
 }

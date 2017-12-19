@@ -22,7 +22,6 @@ import com.gpl.rpg.AndorsTrail.model.conversation.Reply;
 import com.gpl.rpg.AndorsTrail.model.item.ItemTypeCollection;
 import com.gpl.rpg.AndorsTrail.model.item.Loot;
 import com.gpl.rpg.AndorsTrail.model.map.LayeredTileMap;
-import com.gpl.rpg.AndorsTrail.model.map.MapObject;
 import com.gpl.rpg.AndorsTrail.model.map.MonsterSpawnArea;
 import com.gpl.rpg.AndorsTrail.model.map.PredefinedMap;
 import com.gpl.rpg.AndorsTrail.model.quest.QuestLogEntry;
@@ -59,12 +58,12 @@ public final class ConversationController {
 		}
 	}
 
-	private ScriptEffectResult applyScriptEffectsForPhrase(final Player player, final Phrase phrase) {
+	private ScriptEffectResult applyScriptEffectsForPhrase(Resources res, final Player player, final Phrase phrase) {
 		if (phrase.scriptEffects == null || phrase.scriptEffects.length == 0) return null;
 
 		final ScriptEffectResult result = new ScriptEffectResult();
 		for (ScriptEffect effect : phrase.scriptEffects) {
-			applyScriptEffect(player, effect, result);
+			applyScriptEffect(res, player, effect, result);
 		}
 
 		if (result.isEmpty()) return null;
@@ -75,10 +74,13 @@ public final class ConversationController {
 		return result;
 	}
 
-	private void applyScriptEffect(Player player, ScriptEffect effect, ScriptEffectResult result) {
+	private void applyScriptEffect(Resources res, Player player, ScriptEffect effect, ScriptEffectResult result) {
 		switch (effect.type) {
 			case actorCondition:
 				addActorConditionReward(player, effect.effectID, effect.value, result);
+				break;
+			case actorConditionImmunity:
+				addActorConditionImmunityReward(player, effect.effectID, effect.value, result);
 				break;
 			case skillIncrease:
 				addSkillReward(player, SkillCollection.SkillID.valueOf(effect.effectID), result);
@@ -107,22 +109,32 @@ public final class ConversationController {
 			case deactivateSpawnArea:
 				deactivateSpawnArea(effect.mapName, effect.effectID, false);
 				break;
-			case activateMapChangeArea:
-				activateMapChangeArea(effect.mapName, effect.effectID);
+			case activateMapObjectGroup:
+				activateMapObjectGroup(effect.mapName, effect.effectID);
 				break;
-			case deactivateMapChangeArea:
-				deactivateMapChangeArea(effect.mapName, effect.effectID);
+			case deactivateMapObjectGroup:
+				deactivateMapObjectGroup(effect.mapName, effect.effectID);
 				break;
 			case removeQuestProgress:
 				addRemoveQuestProgressReward(player, effect.effectID, effect.value);
 				break;
+			case changeMapFilter:
+				changeMapFilter(res, effect.mapName, effect.effectID);
+				break;
 		}
 	}
 
-	private void deactivateMapChangeArea(String mapName, String mapObjectID) {
+	private void changeMapFilter(Resources res, String mapName, String effectID) {
 		PredefinedMap map = findMapForScriptEffect(mapName);
-		MapObject o = map.findEventObject(MapObject.MapObjectType.newmap, mapObjectID);
-		controllers.mapController.deactivateMapObject(o);
+		map.currentColorFilter = effectID;
+		if (world.model.currentMap == map) {
+			controllers.mapController.applyCurrentMapReplacements(res, true);
+		}
+	}
+	
+	private void deactivateMapObjectGroup(String mapName, String mapObjectGroupID) {
+		PredefinedMap map = findMapForScriptEffect(mapName);
+		controllers.mapController.deactivateMapObjectGroup(map, mapObjectGroupID);
 	}
 
 	private PredefinedMap findMapForScriptEffect(String mapName) {
@@ -130,10 +142,9 @@ public final class ConversationController {
 		return world.maps.findPredefinedMap(mapName);
 	}
 
-	private void activateMapChangeArea(String mapName, String mapObjectID) {
+	private void activateMapObjectGroup(String mapName, String mapObjectGroupID) {
 		PredefinedMap map = findMapForScriptEffect(mapName);
-		MapObject o = map.findEventObject(MapObject.MapObjectType.newmap, mapObjectID);
-		controllers.mapController.activateMapObject(map, o);
+		controllers.mapController.activateMapObjectGroup(map, mapObjectGroupID);
 	}
 
 	private void spawnAll(String mapName, String monsterTypeSpawnGroup) {
@@ -143,7 +154,7 @@ public final class ConversationController {
 			tileMap = world.model.currentTileMap;
 		}
 		for (MonsterSpawnArea area : map.spawnAreas) {
-			if (!area.monsterTypeSpawnGroup.equals(monsterTypeSpawnGroup)) continue;
+			if (!area.areaID.equals(monsterTypeSpawnGroup)) continue;
 			controllers.monsterSpawnController.activateSpawnArea(map, tileMap, area, true);
 		}
 	}
@@ -151,7 +162,7 @@ public final class ConversationController {
 	private void deactivateSpawnArea(String mapName, String monsterTypeSpawnGroup, boolean removeAllMonsters) {
 		PredefinedMap map = findMapForScriptEffect(mapName);
 		for (MonsterSpawnArea area : map.spawnAreas) {
-			if (!area.monsterTypeSpawnGroup.equals(monsterTypeSpawnGroup)) continue;
+			if (!area.areaID.equals(monsterTypeSpawnGroup)) continue;
 			controllers.monsterSpawnController.deactivateSpawnArea(area, removeAllMonsters);
 		}
 	}
@@ -199,7 +210,20 @@ public final class ConversationController {
 		int magnitude = 1;
 		int duration = value;
 		if (value == ActorCondition.DURATION_FOREVER) duration = ActorCondition.DURATION_FOREVER;
-		else if (value == ActorCondition.MAGNITUDE_REMOVE_ALL) magnitude = ActorCondition.MAGNITUDE_REMOVE_ALL;
+		else if (value == ActorCondition.MAGNITUDE_REMOVE_ALL) {
+			duration = ActorCondition.DURATION_NONE;
+			magnitude = ActorCondition.MAGNITUDE_REMOVE_ALL;
+		}
+
+		ActorConditionType conditionType = world.actorConditionsTypes.getActorConditionType(conditionTypeID);
+		ActorConditionEffect e = new ActorConditionEffect(conditionType, magnitude, duration, always);
+		controllers.actorStatsController.applyActorCondition(player, e);
+		result.actorConditions.add(e);
+	}
+
+	private void addActorConditionImmunityReward(Player player, String conditionTypeID, int value, ScriptEffectResult result) {
+		int duration = value;
+		int magnitude = ActorCondition.MAGNITUDE_REMOVE_ALL;
 
 		ActorConditionType conditionType = world.actorConditionsTypes.getActorConditionType(conditionTypeID);
 		ActorConditionEffect e = new ActorConditionEffect(conditionType, magnitude, duration, always);
@@ -267,6 +291,8 @@ public final class ConversationController {
 			case hasActorCondition:
 				result =  player.hasCondition(requirement.requireID);
 				break;
+			case factionScore:
+				result = player.getAlignment(requirement.requireID) >= requirement.value;
 			default:
 				result =  true;
 		}
@@ -362,7 +388,7 @@ public final class ConversationController {
 			setCurrentPhrase(res, phraseID);
 
 			if (applyScriptEffects) {
-				ScriptEffectResult scriptEffectResult = controllers.conversationController.applyScriptEffectsForPhrase(player, currentPhrase);
+				ScriptEffectResult scriptEffectResult = controllers.conversationController.applyScriptEffectsForPhrase(res, player, currentPhrase);
 				if (scriptEffectResult != null) {
 					listener.onScriptEffectsApplied(scriptEffectResult);
 				}
